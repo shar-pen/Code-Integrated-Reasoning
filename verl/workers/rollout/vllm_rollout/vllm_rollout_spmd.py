@@ -70,8 +70,8 @@ from verl.utils.vllm import TensorLoRARequest, VLLMHijack, is_version_ge
 from verl.workers.config import HFModelConfig, RolloutConfig
 from verl.workers.rollout.base import BaseRollout
 
-from cir_utils.python_interpreter import JupyterExecutorManager
-from cir_utils.generate import CodeIntegratedGenerationConfig, code_integrated_generate
+from cir_utils.python_interpreter import ExecutorManager
+from cir_utils.generate_utils import CodeIntegratedGenerationConfig, code_integrated_generate
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -235,7 +235,7 @@ class vLLMRollout(BaseRollout):
 		self.pad_token_id = tokenizer.pad_token_id
 
 		self.code_integrated_generation = CodeIntegratedGenerationConfig(**config.code_integrated_generation)
-		self.executor_manager = JupyterExecutorManager(max_workers=self.code_integrated_generation.execution_parallel_num)
+		self.executor_manager = ExecutorManager(max_workers=self.code_integrated_generation.execution_parallel_num)
 
 	@contextmanager
 	def update_sampling_params(self, **kwargs):
@@ -349,10 +349,10 @@ class vLLMRollout(BaseRollout):
 			if self.code_integrated_generation.enable:
 				outputs, response_observation_mask, code_triggered_count, code_execution_count = code_integrated_generate(
 					vllm_inference_engine=self.inference_engine,
-					executor_manager=self.executor_manager,
 					prompts=vllm_inputs,
 					sampling_params=self.sampling_params,
 					cir_config=self.code_integrated_generation,
+					executor_manager=self.executor_manager,
 					lora_request=lora_requests,
 				)
 				response_observation_mask = pad_2d_list_to_length(response_observation_mask, 0, max_length=self.config.response_length).to(

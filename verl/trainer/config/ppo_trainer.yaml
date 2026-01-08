@@ -56,6 +56,7 @@ actor_rollout_ref:
       observation_tag_start: "<execution_result>"
       observation_tag_end: "</execution_result>"
       max_execution_count: 3
+      max_try_execution_count: 5
       execution_parallel_num: 8
 
 # custom reward function definition

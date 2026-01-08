@@ -207,8 +207,10 @@ marimo/_lsp/
 __marimo__/
 
 
-.data/
-.wandb/
-.outputs/
-test.ipynb
-.exps/
+/data/
+/wandb/
+/outputs/
+test*.ipynb
+/exps/
+/checkpoints/
+/ckpts/

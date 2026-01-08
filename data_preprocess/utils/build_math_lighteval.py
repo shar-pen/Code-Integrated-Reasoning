@@ -85,22 +85,25 @@ def build_math_lighteval(format_prompt_kwargs, enable_map=True):
 	train_dataset = dataset["train"]
 	test_dataset = dataset["test"]
 
-	map_fn = partial(
+	train_map_fn = partial(
+		example_map_fn, process_fn=process_math_lighteval, data_source=data_source, ability="math", split="train", format_prompt_kwargs=format_prompt_kwargs
+	)
+	test_map_fn = partial(
 		example_map_fn, process_fn=process_math_lighteval, data_source=data_source, ability="math", split="test", format_prompt_kwargs=format_prompt_kwargs
 	)
      
 	if enable_map:
-		train_dataset = train_dataset.map(map_fn, with_indices=True, remove_columns=train_dataset.column_names)
-		test_dataset = test_dataset.map(map_fn, with_indices=True, remove_columns=test_dataset.column_names)
+		train_dataset = train_dataset.map(train_map_fn, with_indices=True, remove_columns=train_dataset.column_names)
+		test_dataset = test_dataset.map(test_map_fn, with_indices=True, remove_columns=test_dataset.column_names)
 	else:
 		processed_train_data = []
 		for idx, example in enumerate(train_dataset):
-			processed_train_data.append(map_fn(example, idx))
+			processed_train_data.append(train_map_fn(example, idx))
 		train_dataset = Dataset.from_list(processed_train_data)
 
 		processed_test_data = []
 		for idx, example in enumerate(test_dataset):
-			processed_test_data.append(map_fn(example, idx))
+			processed_test_data.append(test_map_fn(example, idx))
 		test_dataset = Dataset.from_list(processed_test_data)
 
 	return train_dataset, test_dataset

@@ -20,7 +20,7 @@ from omegaconf import MISSING
 from verl.base_config import BaseConfig
 from verl.utils.profiler import ProfilerConfig
 
-from cir_utils.generate import CodeIntegratedGenerationConfig
+from cir_utils.generate_utils import CodeIntegratedGenerationConfig
 
 __all__ = [
 	"SamplingConfig",

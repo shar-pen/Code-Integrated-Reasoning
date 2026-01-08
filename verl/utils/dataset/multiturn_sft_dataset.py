@@ -30,6 +30,14 @@ from verl.utils import hf_tokenizer
 from verl.utils.dataset.dataset_utils import DatasetPadMode
 from verl.utils.fs import copy_local_path_from_hdfs
 
+from cir_utils.encode_utils import encode_and_mask
+
+
+def pairwise_strings(items):
+	if len(items) % 2 != 0:
+		raise ValueError("The input list must contain an even number of elements.")
+	return list(zip(items[::2], items[1::2]))
+
 
 def convert_nested_value_to_list_recursive(data_item):
 	if isinstance(data_item, dict):
@@ -65,6 +73,10 @@ class MultiTurnSFTDataset(Dataset):
 		self.tools_key = multiturn_config.get("tools_key", "tools")
 		self.enable_thinking_key = multiturn_config.get("enable_thinking_key", "enable_thinking")
 		self.apply_chat_template_kwargs = config.get("apply_chat_template_kwargs", {})
+		code_integrated_generation_config = config.get("code_integrated_generation", {})
+		# code_integrated_generation_config.mask_pairs = pairwise_strings(code_integrated_generation_config.get("mask_pairs", []))
+		self.code_integrated_generation_config = code_integrated_generation_config
+		print(self.code_integrated_generation_config)
 		assert self.truncation in ["error", "left", "right"]
 
 		if not isinstance(parquet_files, list | ListConfig):
@@ -173,20 +185,36 @@ class MultiTurnSFTDataset(Dataset):
 				generation_prompt_text,
 				add_special_tokens=False,
 			)
-			_message_tokens = self.tokenizer.encode(
-				cur_applied_text[len(prev_applied_text_w_generation_prompt) :],
-				add_special_tokens=False,
-			)
+			if self.code_integrated_generation_config.enable:
+				_message_tokens, _message_tokens_loss_mask = encode_and_mask(
+					cur_applied_text[len(prev_applied_text_w_generation_prompt) :],
+					self.tokenizer,
+					tags_to_keep=self.code_integrated_generation_config.tags,
+					mask_pairs=self.code_integrated_generation_config.mask_pairs,
+				)
+			else:
+				_message_tokens = self.tokenizer.encode(
+					cur_applied_text[len(prev_applied_text_w_generation_prompt) :],
+					add_special_tokens=False,
+				)
+				_message_tokens_loss_mask = [1] * len(_message_tokens)
 			message_tokens = generation_prompt_tokens + _message_tokens
-			loss_mask = [0] * (len(generation_prompt_tokens)) + [1] * (
-				len(message_tokens) - len(generation_prompt_tokens)
-			)
+			loss_mask = [0] * (len(generation_prompt_tokens)) + _message_tokens_loss_mask
 		else:
-			message_tokens = self.tokenizer.encode(
-				cur_applied_text[len(prev_applied_text) :],
-				add_special_tokens=False,
-			)
+			if self.code_integrated_generation_config.enable:
+				message_tokens, _ = encode_and_mask(
+					cur_applied_text[len(prev_applied_text) :],
+					self.tokenizer,
+					tags_to_keep=self.code_integrated_generation_config.tags,
+					mask_pairs=[], # if not assistant message, its mask all tokens
+				)
+			else:
+				message_tokens = self.tokenizer.encode(
+					cur_applied_text[len(prev_applied_text) :],
+					add_special_tokens=False,
+				)
 			loss_mask = [0] * len(message_tokens)
+
 
 		attention_mask = [1] * len(message_tokens)
 
@@ -242,15 +270,32 @@ class MultiTurnSFTDataset(Dataset):
 
 		# First, get the full conversation tokens
 		try:
-			full_tokens = tokenizer.apply_chat_template(
-				messages,
-				tools=tools,
-				tokenize=True,
-				return_tensors="pt",
-				add_generation_prompt=False,
-				enable_thinking=enable_thinking,
-				**self.apply_chat_template_kwargs,
-			)
+			if self.code_integrated_generation_config.enable:
+				full_message_text= self.tokenizer.apply_chat_template(
+					messages,
+					tools=tools,
+					tokenize=False,
+					add_generation_prompt=False,
+					enable_thinking=enable_thinking,
+					**self.apply_chat_template_kwargs,
+				)
+				full_tokens, _ = encode_and_mask(
+					full_message_text,
+					self.tokenizer,
+					tags_to_keep=self.code_integrated_generation_config.tags,
+					mask_pairs=[],
+				)
+				full_tokens = torch.tensor([full_tokens], dtype=torch.int64)
+			else:
+				full_tokens = tokenizer.apply_chat_template(
+					messages,
+					tools=tools,
+					tokenize=True,
+					return_tensors="pt",
+					add_generation_prompt=False,
+					enable_thinking=enable_thinking,
+					**self.apply_chat_template_kwargs,
+				)
 		except Exception as e:
 			logging.error(
 				f"Error applying chat template: {e}\nMessages: {messages}\nTools: {tools}\nEnable thinking: "

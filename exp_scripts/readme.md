@@ -1,0 +1,3 @@
+NGPUS_PER_NODE=4 PROJ_NAME="sft" EXP_NAME="qwen_2.5_1.5b" CUDA_VISIBLE_DEVICES='0,1,2,3' bash exps/sft.sh
+NGPUS_PER_NODE=4 PROJ_NAME="sft" EXP_NAME="qwen_2.5_1.5b" CUDA_VISIBLE_DEVICES='0,1,2,3' bash exps/sft.sh
+

@@ -1,6 +1,16 @@
 import re
 import time
+import random
 import warnings
+import multiprocessing
+import io
+import dill
+import ast
+import traceback
+import contextlib
+import sys
+import socket
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -35,157 +45,22 @@ class ExecResult:
 	error: Optional[Dict[str, Any]] = None
 
 
-class JupyterKernelExecutor:
-	"""
-	Execute code in a real IPython/Jupyter kernel (like a notebook cell).
-
-	Features:
-	- Supports "last-line expression auto display" (execute_result)
-	- Supports %magic and !shell (IPython kernel)
-	- Captures stdout/stderr (stream)
-	- Captures rich outputs (display_data / execute_result)
-	- Captures errors with readable multiline traceback
-	"""
-
-	def __init__(self, kernel_name: str = "python3", nocolor: bool = True):
-		self.km = KernelManager(kernel_name=kernel_name)
-		self.km.start_kernel()
-
-		self.kc = self.km.client()
-		self.kc.start_channels()
-		self.kc.wait_for_ready(timeout=10)
-
-		# Optionally disable colored tracebacks to avoid ANSI sequences.
-		# We still keep strip_ansi as a fallback.
-		if nocolor:
-			self._run_silent("%colors nocolor", timeout=10)
-
-	def shutdown(self, now: bool = True):
-		"""Stop channels and shutdown the kernel process."""
-		try:
-			self.kc.stop_channels()
-		finally:
-			self.km.shutdown_kernel(now=now)
-
-	def interrupt(self):
-		"""Interrupt the kernel (useful for runaway code)."""
-		self.km.interrupt_kernel()
-
-	def _drain_iopub(self, max_seconds: float = 0.2):
-		"""
-		Drain pending IOPub messages to reduce cross-talk between executions.
-		This is a best-effort cleanup.
-		"""
-		end = time.time() + max_seconds
-		while time.time() < end:
-			try:
-				_ = self.kc.get_iopub_msg(timeout=0.05)
-			except Exception:
-				break
-
-	def _run_silent(self, code: str, timeout: float = 10.0):
-		"""
-		Execute code silently and wait for idle (discard all outputs).
-		Useful for one-time kernel configuration.
-		"""
-		self._drain_iopub()
-		msg_id = self.kc.execute(code, silent=True, store_history=False)
-
-		deadline = time.time() + timeout
-		while True:
-			remaining = deadline - time.time()
-			if remaining <= 0:
-				raise TimeoutError("Silent kernel execution timed out")
-
-			msg = self.kc.get_iopub_msg(timeout=remaining)
-			if msg.get("parent_header", {}).get("msg_id") != msg_id:
-				continue
-
-			if msg.get("msg_type") == "status":
-				if msg.get("content", {}).get("execution_state") == "idle":
-					return
+class BasePythonExecutor:
+	"""Base class for Python executors."""
+	def __init__(self, kernel_name: str = "python3", **kwargs):
+		pass
 
 	def execute(self, code: str, timeout: float = 30.0) -> ExecResult:
-		"""
-		Execute a notebook-like cell and collect outputs until the kernel becomes idle.
-		"""
-		self._drain_iopub()
+		raise NotImplementedError
 
-		res = ExecResult()
-		msg_id = self.kc.execute(code)
+	def shutdown(self, now: bool = True):
+		raise NotImplementedError
 
-		deadline = time.time() + timeout
-		while True:
-			remaining = deadline - time.time()
-			if remaining <= 0:
-				raise TimeoutError("Kernel execution timed out")
-
-			msg = self.kc.get_iopub_msg(timeout=remaining)
-
-			# Only accept messages belonging to this execution request.
-			if msg.get("parent_header", {}).get("msg_id") != msg_id:
-				continue
-
-			msg_type = msg.get("msg_type")
-			content = msg.get("content", {}) or {}
-
-			# Done signal
-			if msg_type == "status" and content.get("execution_state") == "idle":
-				break
-
-			if msg_type == "stream":
-				# content: {name: 'stdout'/'stderr', text: '...'}
-				name = content.get("name")
-				text = content.get("text", "")
-				if name == "stdout":
-					res.stdout += text
-				else:
-					res.stderr += text
-				res.outputs.append({"type": "stream", **content})
-
-			elif msg_type in ("execute_result", "display_data"):
-				# content: {data: {...}, metadata: {...}, execution_count?: ...}
-				data = content.get("data", {}) or {}
-				tp = data.get("text/plain")
-				if tp is not None:
-					if isinstance(tp, list):
-						res.text_plain.extend([str(x) for x in tp])
-					else:
-						res.text_plain.append(str(tp))
-				res.outputs.append({"type": msg_type, **content})
-
-			elif msg_type == "error":
-				# content: {ename, evalue, traceback: [...]}
-				tb_lines = content.get("traceback", []) or []
-				tb_text = "\n".join(tb_lines)
-				tb_text_clean = strip_ansi(tb_text)
-
-				res.error = {
-					"ename": content.get("ename"),
-					"evalue": content.get("evalue"),
-					# A "normal-looking" multiline traceback string (like notebook output)
-					"traceback": tb_text_clean,
-					# Keep lines too (optional but sometimes handy)
-					"traceback_lines": [strip_ansi(line) for line in tb_lines],
-				}
-				res.outputs.append({"type": "error", **content})
-
-			else:
-				# Other message types: clear_output, update_display_data, etc.
-				res.outputs.append({"type": msg_type, **content})
-
-		return res
+	def interrupt(self):
+		raise NotImplementedError
 
 	def reset(self):
-		"""
-		Clear the kernel's outputs and error information while retaining the kernel instance.
-		"""
-		self._drain_iopub()  # Clear the IOPub messages
-		# Reset the ExecResult instance
-		self.exec_result = ExecResult()
-
-		# Optionally, run %reset to clear variables in the kernel's memory
-		self._run_silent("%reset -f", timeout=10)
+		raise NotImplementedError
 
 
 def default_format_execution_return(exec_ret: ExecResult) -> str:
@@ -203,7 +78,145 @@ def default_format_execution_return(exec_ret: ExecResult) -> str:
 	return execution_result
 
 
-class JupyterExecutorManager:
+def _run_code_with_timeout(code, globals_dict):
+	"""
+	Helper function to run code in a separate process with timeout support.
+	"""
+	res = ExecResult()
+	stdout_capture = io.StringIO()
+	stderr_capture = io.StringIO()
+	
+	with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
+		try:
+			# Parse AST to handle last expression value
+			tree = ast.parse(code)
+			if not tree.body:
+				pass
+			else:
+				last_node = tree.body[-1]
+				to_exec = None
+				to_eval = None
+				
+				if isinstance(last_node, ast.Expr):
+					# Last statement is an expression
+					if len(tree.body) > 1:
+						exec_node = ast.Module(body=tree.body[:-1], type_ignores=[])
+						to_exec = compile(exec_node, filename="<string>", mode="exec")
+					
+					to_eval = compile(ast.Expression(body=last_node.value), filename="<string>", mode="eval")
+				else:
+					to_exec = compile(tree, filename="<string>", mode="exec")
+					
+				if to_exec:
+					exec(to_exec, globals_dict)
+				
+				if to_eval:
+					val = eval(to_eval, globals_dict)
+					if val is not None:
+						res.text_plain.append(str(val))
+						# Add to outputs for compatibility
+						res.outputs.append({
+							"type": "execute_result",
+							"data": {"text/plain": str(val)},
+							"metadata": {}
+						})
+						
+		except Exception:
+			# Capture traceback
+			exc_type, exc_value, tb = sys.exc_info()
+			tb_str = "".join(traceback.format_exception(exc_type, exc_value, tb))
+			# Remove ANSI colors if any
+			tb_clean = strip_ansi(tb_str)
+			
+			res.error = {
+				"ename": exc_type.__name__,
+				"evalue": str(exc_value),
+				"traceback": tb_clean
+			}
+			res.outputs.append({
+				"type": "error",
+				"ename": exc_type.__name__,
+				"evalue": str(exc_value),
+				"traceback": tb_clean
+			})
+	
+	res.stdout = stdout_capture.getvalue()
+	res.stderr = stderr_capture.getvalue()
+	
+	return res, globals_dict
+
+
+def _process_wrapper(code, globals_bytes, return_dict):
+	"""Wrapper to run code and store result in return_dict."""
+	try:
+		globals_dict = dill.loads(globals_bytes)
+		result, new_globals = _run_code_with_timeout(code, globals_dict)
+		return_dict['result'] = result
+		return_dict['new_globals'] = dill.dumps(new_globals)
+	except Exception as e:
+		return_dict['error'] = str(e)
+
+
+class LocalPythonExecutor(BasePythonExecutor):
+	"""
+	A local python executor using exec to run code in the current process.
+	Maintains a global namespace dictionary for state persistence.
+	"""
+	def __init__(self, kernel_name: str = "python3", **kwargs):
+		self.globals = {}
+		self.unique_id = kernel_name
+
+	def execute(self, code: str, timeout: float = 30.0) -> ExecResult:
+		# Use multiprocessing.Manager to handle return values
+		with multiprocessing.Manager() as manager:
+			return_dict = manager.dict()
+			globals_bytes = dill.dumps(self.globals)
+			
+			p = multiprocessing.Process(target=_process_wrapper, args=(code, globals_bytes, return_dict))
+			p.start()
+			p.join(timeout)
+			
+			if p.is_alive():
+				p.kill()
+				p.join()
+				error_msg = f"Execution timed out after {timeout} seconds"
+				# Return an ExecResult with the same error structure as runtime errors
+				tb = error_msg
+				res = ExecResult(
+					stderr=error_msg,
+					outputs=[{
+						"type": "error",
+						"ename": "TimeoutError",
+						"evalue": error_msg,
+						"traceback": tb
+					}],
+					error={
+						"ename": "TimeoutError",
+						"evalue": error_msg,
+						"traceback": tb
+					}
+				)
+				return res
+			
+			if 'result' in return_dict:
+				self.globals = dill.loads(return_dict['new_globals'])
+				return return_dict['result']
+			elif 'error' in return_dict:
+				raise RuntimeError(f"Execution failed: {return_dict['error']}")
+			else:
+				raise RuntimeError("Execution failed to return a result")
+
+	def shutdown(self, now: bool = True):
+		pass
+			
+	def interrupt(self):
+		pass
+			
+	def reset(self):
+		self.globals = {}
+
+
+class ExecutorManager:
 	"""Manager that creates and coordinates multiple JupyterKernelExecutor instances.
 
 	Responsibilities:
@@ -218,28 +231,29 @@ class JupyterExecutorManager:
 		ids: Optional[list] = [],
 		max_workers: int = 4,
 		default_timeout: Optional[float] = 10.0,
+		executor_cls: type = LocalPythonExecutor,
 	):
 		self.max_workers = max_workers
 		self.default_timeout = default_timeout
-		print(f"Initialized JupyterExecutorManager with {max_workers} parallel workers, default timeout {default_timeout}s.")
+		self.executor_cls = executor_cls
+		print(f"Initialized JupyterExecutorManager with {max_workers} parallel workers, default timeout {default_timeout}s, executor class {executor_cls.__name__}.")
 		
 		# Initialize executors only from provided ids.
 		self.executor_map = {}
 		if ids:
 			self.add_executors(ids)
 
-
 	def add_executor(self, id):
-		"""Add a single JupyterKernelExecutor for `id` if it doesn't already exist.
+		"""Add a single executor for `id` if it doesn't already exist.
 
 		Returns True if created, False if already existed.
 		"""
 		if id in self.executor_map:
 			return False
-		self.executor_map[id] = JupyterKernelExecutor(nocolor=True)
+		self.executor_map[id] = self.executor_cls(kernel_name=id)
 	
 	def add_executors(self, ids: list):
-		"""Add JupyterKernelExecutor instances for the given ids (ignore existing keys) in parallel."""
+		"""Add executor instances for the given ids (ignore existing keys) in parallel."""
 		if not ids:
 			return
 
@@ -250,12 +264,15 @@ class JupyterExecutorManager:
 		workers = min(len(missing_ids), self.max_workers)
 		with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
 			future_to_id = {
-				pool.submit(JupyterKernelExecutor, nocolor=True): id for id in missing_ids
+				pool.submit(self.executor_cls, kernel_name=id): id for id in missing_ids
 			}
 			for fut in concurrent.futures.as_completed(future_to_id):
 				executor_id = future_to_id[fut]
-				executor = fut.result()
-				self.executor_map[executor_id] = executor
+				try:
+					executor = fut.result()
+					self.executor_map[executor_id] = executor
+				except Exception as e:
+					print(f"Error creating executor {executor_id}: {e}")
 
 	def shutdown(self, now: bool = True):
 		"""Shutdown all managed JupyterKernelExecutor instances.
@@ -385,12 +402,31 @@ class JupyterExecutorManager:
 				try:
 					exec_ret = fut.result()
 					execution_result = default_format_execution_return(exec_ret)
+					error_status = exec_ret.error is not None
 				except Exception as e:
 					execution_result = f"Execution error: {e}"
+					error_status = True
 				results[idx] = {
 					"id": id,
 					"code": code,
 					"execution_return": execution_result,
+					"execution_error": error_status,
 				}
 
 		return results
+
+if __name__ == "__main__":
+
+	executor = LocalPythonExecutor()
+
+	code = "def add(a,b):\n    return a + b\nadd(1)"
+	r = executor.execute(code)
+	print(r)
+
+	code = "add(1,2)"
+	r = executor.execute(code)
+	print(r)
+	
+	code = "import time\ntime.sleep(2)\nadd(3,4)"
+	r = executor.execute(code, 1)
+	print(r)
