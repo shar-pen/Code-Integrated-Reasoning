@@ -1,4 +1,4 @@
-import re, fire
+import re, argparse
 import numpy as np
 import pandas as pd
 
@@ -29,9 +29,10 @@ def has_paired_tag(text: str, tags: list[tuple[str, str]]) -> bool:
 # input_data_path = 'data/infer/infer.parquet'
 # output_data_path = 'data/infer/distillation_data.parquet'
 
-def main(input_data_path: str, output_data_path: str):
+def main(input_data_path: str, output_data_path: str, max_num_response_per_question: int | None = None):
 	tags = [["<python_interpreter>", "</python_interpreter>"], ["<execution_result>", "</execution_result>"]]
 	select_min_exec = True
+	max_responses = None if not max_num_response_per_question or max_num_response_per_question <= 0 else max_num_response_per_question
 	dataset = pd.read_parquet(input_data_path)
 
 	data = []
@@ -58,6 +59,7 @@ def main(input_data_path: str, output_data_path: str):
 			responses = responses[qualified_mask]
 			scores = scores[qualified_mask]
 			code_execution_counts = code_execution_counts[qualified_mask]
+			added = 0
 
 			if select_min_exec:
 				min_exec_cnt = np.min(code_execution_counts)
@@ -69,6 +71,9 @@ def main(input_data_path: str, output_data_path: str):
 								{'role': 'assistant', 'content': resp}
 							]
 						})
+						added += 1
+						if max_responses and added >= max_responses:
+							break
 			else:
 				for resp, exec_cnt in zip(responses, code_execution_counts):
 					data.append({
@@ -77,6 +82,9 @@ def main(input_data_path: str, output_data_path: str):
 							{'role': 'assistant', 'content': resp}
 						]
 					})
+					added += 1
+					if max_responses and added >= max_responses:
+						break
 		else:
 			continue
 		
@@ -86,4 +94,10 @@ def main(input_data_path: str, output_data_path: str):
 	data.to_parquet(output_data_path, index=False)
 
 if __name__ == "__main__":
-	fire.Fire(main)
+	parser = argparse.ArgumentParser(description="Select qualified data from a parquet dataset")
+	parser.add_argument("--input-data-path", type=str, required=True, dest="input_data_path", help="Path to input parquet file")
+	parser.add_argument("--output-data-path", type=str, required=True, dest="output_data_path", help="Path to output parquet file")
+	parser.add_argument("--max-num-response-per-question", type=int, dest="max_num_response_per_question", help="Maximum number of responses to keep per question (<=0 for unlimited)", default=None,)
+	args = parser.parse_args()
+	main(args.input_data_path, args.output_data_path, args.max_num_response_per_question)
+	

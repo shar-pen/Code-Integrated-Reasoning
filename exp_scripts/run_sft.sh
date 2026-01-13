@@ -9,7 +9,7 @@ export PYTHONWARNINGS="ignore"
 export WANDB_MODE=offline
 
 
-PROJ_NAME=${PROJ_NAME:-"sft"}
+PROJ_NAME=${PROJ_NAME:-"cir_sft"}
 EXP_NAME=${EXP_NAME:-"default"}
 
 NGPUS_PER_NODE=${NGPUS_PER_NODE:-1}

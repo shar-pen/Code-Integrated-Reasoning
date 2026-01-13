@@ -347,7 +347,7 @@ class vLLMRollout(BaseRollout):
 		# users can customize different sampling_params at different run
 		with self.update_sampling_params(**kwargs):
 			if self.code_integrated_generation.enable:
-				outputs, response_observation_mask, code_triggered_count, code_execution_count = code_integrated_generate(
+				outputs, response_observation_mask, code_triggered_count, code_execution_count, code_execution_error_count = code_integrated_generate(
 					vllm_inference_engine=self.inference_engine,
 					prompts=vllm_inputs,
 					sampling_params=self.sampling_params,
@@ -422,7 +422,11 @@ class vLLMRollout(BaseRollout):
 		)
 		if self.code_integrated_generation.enable:
 			batch.update({"response_mask": response_observation_mask})
-			non_tensor_batch.update({"code_triggered_counts": np.array(code_triggered_count), "code_execution_counts": np.array(code_execution_count)})
+			non_tensor_batch.update({
+				"code_triggered_counts": np.array(code_triggered_count), 
+				"code_execution_counts": np.array(code_execution_count),
+				"code_execution_error_counts": np.array(code_execution_error_count),
+			})
 		if self.config.calculate_log_probs:
 			# we will recompute old log prob with actor
 			batch["rollout_log_probs"] = rollout_log_probs

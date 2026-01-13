@@ -162,6 +162,7 @@ class GenerationInfoManager:
 			[item['response_observation_mask'] for item in self.data],
 			[item['code_triggered_count'] for item in self.data],
 			[item['code_execution_count'] for item in self.data],
+			[item['code_execution_error_cnt'] for item in self.data],
 		)
 
 
@@ -267,14 +268,14 @@ def code_integrated_generate(
 
 	final_output_vllm_format = generation_info_manager.to_vllm_request_outputs()
 
-	response_observation_mask, code_triggered_counts, code_execution_counts = generation_info_manager.summaries()
+	response_observation_mask, code_triggered_counts, code_execution_counts, code_execution_error_counts = generation_info_manager.summaries()
 	
 	try:
 		executor_manager.shutdown_executor(ids)
 	except:
 		pass
 
-	return final_output_vllm_format, response_observation_mask, code_triggered_counts, code_execution_counts
+	return final_output_vllm_format, response_observation_mask, code_triggered_counts, code_execution_counts, code_execution_error_counts
 	
 
 
@@ -322,7 +323,7 @@ if __name__ == "__main__":
 		{"prompt_token_ids": raw_prompt_ids} for raw_prompt_ids in batch_prompts
 	]
 
-	output, mask, code_triggered_count, code_execution_count = code_integrated_generate(
+	output, mask, code_triggered_count, code_execution_count, code_execution_error_count = code_integrated_generate(
 		inference_engine,
 		excutor_manager,
 		vllm_inputs,
@@ -334,6 +335,7 @@ if __name__ == "__main__":
 
 	print((np.array(code_triggered_count) > 0).astype(float).mean())
 	print((np.array(code_execution_count) > 0).astype(float).mean())
+	print((np.array(code_execution_error_count) > 0).astype(float).mean())
 
 	try:
 		excutor_manager.shutdown()

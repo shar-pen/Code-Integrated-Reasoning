@@ -241,20 +241,30 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
 		metrics["tool_call_counts/max"] = tool_call_counts.max()
 		metrics["tool_call_counts/mean"] = tool_call_counts.mean()
 
-	if "code_execution_counts" in batch.non_tensor_batch and "code_triggered_counts" in batch.non_tensor_batch:
+	if "code_triggered_counts" in batch.non_tensor_batch:
+		code_triggered_counts = batch.non_tensor_batch["code_triggered_counts"]
+		metrics["code_integrated_generation/code_triggered_counts/min"] = code_triggered_counts.min()
+		metrics["code_integrated_generation/code_triggered_counts/max"] = code_triggered_counts.max()
+		metrics["code_integrated_generation/code_triggered_counts/mean"] = code_triggered_counts.mean()
+		metrics["code_integrated_generation/code_triggered_counts/bool"] = (code_triggered_counts > 0).astype(float).mean()
+		metrics["code_integrated_generation/valid_code_ratio"] = compute_ratio(code_execution_counts, code_triggered_counts).mean()
+
+	if "code_execution_counts" in batch.non_tensor_batch:
 		code_execution_counts = batch.non_tensor_batch["code_execution_counts"]
 		metrics["code_integrated_generation/code_execution_counts/min"] = code_execution_counts.min()
 		metrics["code_integrated_generation/code_execution_counts/max"] = code_execution_counts.max()
 		metrics["code_integrated_generation/code_execution_counts/mean"] = code_execution_counts.mean()
 		metrics["code_integrated_generation/code_execution_counts/bool"] = (code_execution_counts > 0).astype(float).mean()
 
-		code_triggered_counts = batch.non_tensor_batch["code_triggered_counts"]
-		metrics["code_integrated_generation/code_triggered_counts/min"] = code_triggered_counts.min()
-		metrics["code_integrated_generation/code_triggered_counts/max"] = code_triggered_counts.max()
-		metrics["code_integrated_generation/code_triggered_counts/mean"] = code_triggered_counts.mean()
-		metrics["code_integrated_generation/code_triggered_counts/bool"] = (code_triggered_counts > 0).astype(float).mean()
-
-		metrics["code_integrated_generation/valid_code_execution_ratio"] = compute_ratio(code_execution_counts, code_triggered_counts).mean()
+	
+	if "code_execution_error_counts" in batch.non_tensor_batch and "code_execution_counts" in batch.non_tensor_batch:
+		code_execution_counts = batch.non_tensor_batch["code_execution_counts"]
+		code_execution_error_counts = batch.non_tensor_batch["code_execution_error_counts"]
+		metrics["code_integrated_generation/code_execution_error_counts/min"] = code_execution_error_counts.min()
+		metrics["code_integrated_generation/code_execution_error_counts/max"] = code_execution_error_counts.max()
+		metrics["code_integrated_generation/code_execution_error_counts/mean"] = code_execution_error_counts.mean()
+		metrics["code_integrated_generation/code_execution_error_counts/bool"] = (code_execution_error_counts > 0).astype(float).mean()
+		metrics["code_integrated_generation/execution_error_ratio"] = compute_ratio(code_execution_error_counts, code_execution_counts).mean()
 		
 	return metrics
 

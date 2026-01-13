@@ -14,7 +14,6 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from jupyter_client import KernelManager
 import concurrent.futures
 
 

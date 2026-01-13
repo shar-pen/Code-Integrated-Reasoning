@@ -1,4 +1,5 @@
-import os, json, fire
+import os
+import argparse
 import torch
 from tqdm import tqdm
 import numpy as np
@@ -17,7 +18,7 @@ def main(
 		prompt_key: str = 'prompt', 
 		data_source_key: str = 'data_source', 
 		reward_model_key: str = 'reward_model', 
-		batch_size: int = 128,
+		batch_size: int = -1,
 		temperature: float = 1.0, 
 		max_tokens: int = 2048, 
 		top_p: float = 0.7, 
@@ -25,44 +26,50 @@ def main(
 		tensor_parallel_size: int = 1,
 	):
 
+	# Load datasets
+	datasets = []
+	for parquet_file in tqdm(data_files, desc="Loading Parquet Files"):
+		# read parquet files and cache
+		dataset = pd.read_parquet(parquet_file)
+		print(f"Loaded {len(dataset)} samples from {parquet_file}")
+		datasets.append(dataset)
+	dataset: pd.DataFrame = pd.concat(datasets, ignore_index=True)
+	print(f"Total samples loaded: {len(dataset)}")
+	
+	chat_lst = list(dataset[prompt_key])
+	chat_lst = [chat.tolist() if not isinstance(chat, list) else chat for chat in chat_lst]
+
+	# Setup inference components
 	sampling_params = SamplingParams(
 		temperature=temperature,
 		max_tokens=max_tokens,
 		top_p=top_p,
 	)
-
 	excutor_manager = ExecutorManager(max_workers=8, executor_cls=LocalPythonExecutor)
 	cir_config = CodeIntegratedGenerationConfig()
 
+	print("Initializing LLM inference engine...")
 	inference_engine = LLM(
 		model=model_name_or_path, 
 		tensor_parallel_size=tensor_parallel_size, 
-		gpu_memory_utilization=0.85,
+		gpu_memory_utilization=0.9,
 		skip_tokenizer_init=False,
 	)
 	tokenizer = inference_engine.get_tokenizer()
-
-	datasets = []
-	for parquet_file in data_files:
-		# read parquet files and cache
-		dataset = pd.read_parquet(parquet_file)
-		datasets.append(dataset)
-	dataset: pd.DataFrame = pd.concat(datasets, ignore_index=True)
-	
-	chat_lst = list(dataset[prompt_key])
-	chat_lst = [chat.tolist() if not isinstance(chat, list) else chat for chat in chat_lst]
-
 	tokenizer.padding_side = "left"
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 
-
+	# Inference loop
 	total_samples = len(dataset)
+	if batch_size == -1:
+		batch_size = total_samples
 	num_batch = -(-total_samples // batch_size)
 	output_col_list = []
 	score_list = []
 	code_triggered_count_col_list = []
 	code_execution_count_col_list = []
+	code_execution_error_count_col_list = []
 
 	for batch_idx in tqdm(range(num_batch), desc="Generating Batches"):
 
@@ -80,7 +87,7 @@ def main(
 		]
 		vllm_inputs = np.repeat(vllm_inputs, repeats=n_samples, axis=0).tolist()
 		
-		outputs, response_observation_mask, code_triggered_counts, code_execution_counts = code_integrated_generate(
+		outputs, response_observation_mask, code_triggered_counts, code_execution_counts, code_execution_error_counts = code_integrated_generate(
 			vllm_inference_engine=inference_engine,
 			prompts=vllm_inputs,
 			sampling_params=sampling_params,
@@ -92,21 +99,24 @@ def main(
 		output_col_list.extend(output_texts)
 		code_triggered_count_col_list.extend(code_triggered_counts)
 		code_execution_count_col_list.extend(code_execution_counts)
+		code_execution_error_count_col_list.extend(code_execution_error_counts)
 
 
 	output_col_list = np.array(output_col_list).reshape(-1, n_samples).tolist()
 	code_triggered_count_col_list = np.array(code_triggered_count_col_list).reshape(-1, n_samples).tolist()
 	code_execution_count_col_list = np.array(code_execution_count_col_list).reshape(-1, n_samples).tolist()
+	code_execution_error_count_col_list = np.array(code_execution_error_count_col_list).reshape(-1, n_samples).tolist()
 
 	dataset["responses"] = output_col_list
 	dataset["code_triggered_counts"] = code_triggered_count_col_list
 	dataset["code_execution_counts"] = code_execution_count_col_list
+	dataset["code_execution_error_counts"] = code_execution_error_count_col_list
 
 
 	def process_item(data_source, response_lst, reward_data):
 		reward_fn = default_compute_score
 		ground_truth = reward_data["ground_truth"]
-		score_lst = [reward_fn(data_source, r, ground_truth) for r in response_lst]
+		score_lst = np.array([reward_fn(data_source, r, ground_truth) for r in response_lst])
 		return  score_lst
 	
 	responses = dataset['responses']
@@ -124,5 +134,36 @@ def main(
 	dataset.to_parquet(output_path)
 
 
+def parse_args():
+	parser = argparse.ArgumentParser(description="Code-integrated inference runner")
+	parser.add_argument("--model-name-or-path", required=True, help="Model identifier or local path")
+	parser.add_argument("--data-files", nargs="+", required=True, help="One or more parquet files containing prompts",)
+	parser.add_argument("--output-path", required=True, help="Destination parquet path for outputs")
+	parser.add_argument("--prompt-key", default="prompt", help="Column storing chat prompts")
+	parser.add_argument("--data-source-key", default="data_source", help="Column for data source metadata")
+	parser.add_argument("--reward-model-key", default="reward_model", help="Column containing reward metadata")
+	parser.add_argument("--batch-size", type=int, default=-1, help="Batch size for inference, -1 means full batch")
+	parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
+	parser.add_argument("--max-tokens", type=int, default=2048, help="Maximum new tokens")
+	parser.add_argument("--top-p", type=float, default=0.7, help="Top-p nucleus sampling")
+	parser.add_argument("--n-samples", type=int, default=4, help="Number of samples per prompt")
+	parser.add_argument("--tensor-parallel-size", type=int, default=1, help="Tensor parallel world size")
+	return parser.parse_args()
+
+
 if __name__ == "__main__":
-	fire.Fire(main)		
+	args = parse_args()
+	main(
+		model_name_or_path=args.model_name_or_path,
+		data_files=args.data_files,
+		output_path=args.output_path,
+		prompt_key=args.prompt_key,
+		data_source_key=args.data_source_key,
+		reward_model_key=args.reward_model_key,
+		batch_size=args.batch_size,
+		temperature=args.temperature,
+		max_tokens=args.max_tokens,
+		top_p=args.top_p,
+		n_samples=args.n_samples,
+		tensor_parallel_size=args.tensor_parallel_size,
+	)
