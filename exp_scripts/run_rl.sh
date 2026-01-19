@@ -1,18 +1,17 @@
 export PYTHONWARNINGS="ignore"
-export CUDA_VISIBLE_DEVICES='7'
 export WANDB_MODE=offline
 export NGPUS_PER_NODE=1
+export CUDA_VISIBLE_DEVICES='7'
 
 
-export PROJ_NAME="DAPO_math"
-export EXP_NAME="DAPO-Qwen2.5-1.5b-MATH-test"
+# export PROJ_NAME="GRPO_math_CIR"
+export EXP_NAME="Qwen2.5-1.5B-Instruct_SFT"
 
-export RAY_DATA_HOME=/home/pengxia3/dc
-export MODEL_PATH=/home/pengxia3/dc/models/Qwen2.5-1.5B-Instruct
-export TRAIN_FILE="/home/pengxia3/dc/data/normal_reasoning/dapo_math_17k/train.parquet"
-export TEST_FILE="['/home/pengxia3/dc/data/normal_reasoning/aime/aime2023.parquet', '/home/pengxia3/dc/data/normal_reasoning/aime/aime2024.parquet', '/home/pengxia3/dc/data/normal_reasoning/aime/aime2025.parquet']"
+export MODEL_PATH="ckpts/cir_sft/qwen_2.5_1.5b/global_step_8_merged"
+export TRAIN_FILE="data/code_integrated_reasoning/math_lighteval/train.parquet"
+export TEST_FILE="['data/code_integrated_reasoning/math500/test.parquet']"
 
 
-# bash exp/dapo_basescript.sh
-# bash exp/grpo_basescript.sh
-bash exp/grpo_basescript_cir.sh
+# bash exp_scripts/train_dapo.sh
+# bash exp_scripts/train_grpo.sh
+bash exp_scripts/train_grpo_cir.sh

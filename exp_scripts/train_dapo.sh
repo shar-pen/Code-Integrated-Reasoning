@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-export PYTHONWARNINGS="ignore"
-export CUDA_VISIBLE_DEVICES='7'
-export WANDB_MODE=offline
-
-PROJ_NAME=${PROJ_NAME:-"DAPO_math"}
+PROJ_NAME=${PROJ_NAME:-"DAPO_math_reasoning"}
 EXP_NAME=${EXP_NAME:-"default"}
 
 NNODES=${NNODES:-1}
-NGPUS_PER_NODE=${NGPUS_PER_NODE:-1}
+NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 
 # Paths
-MODEL_PATH=${MODEL_PATH:-"/home/pengxia3/dc/models/Qwen2.5-1.5B-Instruct"}
-CKPTS_DIR="/home/pengxia3/dc/ckpts/${PROJ_NAME}/${EXP_NAME}"
+MODEL_PATH=${MODEL_PATH:-"~/dc/models/Qwen2.5-1.5B-Instruct"}
+CKPTS_ROOT_DIR=${CKPTS_ROOT_DIR:-"ckpts"}
+CKPTS_DIR=${CKPTS_ROOT_DIR}/${PROJ_NAME}/${EXP_NAME}
 
-FILE_DIR="/home/pengxia3/dc/data/normal_reasoning"
+FILE_DIR="data/normal_reasoning"
 TRAIN_FILE=${TRAIN_FILE:-"${FILE_DIR}/dapo_math_17k/train.parquet"}
 TEST_FILE=${TEST_FILE:-"['${FILE_DIR}/aime/aime2023.parquet', '${FILE_DIR}/aime/aime2024.parquet', '${FILE_DIR}/aime/aime2025.parquet']"}
 
@@ -29,7 +26,7 @@ loss_agg_mode="token-mean"
 clip_ratio_low=0.2
 clip_ratio_high=0.28
 
-max_prompt_length=$((1024 * 2))
+max_prompt_length=$((1024 * 1))
 max_response_length=$((1024 * 8))
 enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))

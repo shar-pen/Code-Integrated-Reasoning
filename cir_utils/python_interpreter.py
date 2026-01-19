@@ -32,7 +32,7 @@ class ExecResult:
 	stdout: str = ""
 	stderr: str = ""
 
-	# All raw Jupyter output messages we observed on IOPub (useful for rich rendering)
+	# All raw  output messages we observed on IOPub (useful for rich rendering)
 	outputs: List[Dict[str, Any]] = field(default_factory=list)
 
 	# Convenience: extracted "text/plain" payloads (e.g., last expression result)
@@ -216,10 +216,10 @@ class LocalPythonExecutor(BasePythonExecutor):
 
 
 class ExecutorManager:
-	"""Manager that creates and coordinates multiple JupyterKernelExecutor instances.
+	"""Manager that creates and coordinates multiple KernelExecutor instances.
 
 	Responsibilities:
-	- Optionally create a map of `JupyterKernelExecutor` instances.
+	- Optionally create a map of `KernelExecutor` instances.
 	- Extract code between configured interpreter tags.
 	- Execute code blocks in parallel and format results using
 	  `default_format_execution_return`.
@@ -235,7 +235,7 @@ class ExecutorManager:
 		self.max_workers = max_workers
 		self.default_timeout = default_timeout
 		self.executor_cls = executor_cls
-		print(f"Initialized JupyterExecutorManager with {max_workers} parallel workers, default timeout {default_timeout}s, executor class {executor_cls.__name__}.")
+		print(f"Initialized ExecutorManager with {max_workers} parallel workers, default timeout {default_timeout}s, executor class {executor_cls.__name__}.")
 		
 		# Initialize executors only from provided ids.
 		self.executor_map = {}
@@ -274,7 +274,7 @@ class ExecutorManager:
 					print(f"Error creating executor {executor_id}: {e}")
 
 	def shutdown(self, now: bool = True):
-		"""Shutdown all managed JupyterKernelExecutor instances.
+		"""Shutdown all managed KernelExecutor instances.
 
 		Calls each executor's `shutdown()` and clears the internal map.
 		"""
@@ -429,3 +429,6 @@ if __name__ == "__main__":
 	code = "import time\ntime.sleep(2)\nadd(3,4)"
 	r = executor.execute(code, 1)
 	print(r)
+
+	del executor
+

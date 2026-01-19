@@ -3,11 +3,14 @@ import re
 import warnings
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from vllm.outputs import RequestOutput, CompletionOutput
 from .encode_utils import encode_with_tag
 
 from .python_interpreter import ExecutorManager
+from tqdm.auto import tqdm
+from time import sleep
+
 
 @dataclass
 class CodeIntegratedGenerationConfig:
@@ -19,6 +22,8 @@ class CodeIntegratedGenerationConfig:
 	max_execution_count: int = 3
 	max_try_execution_count: int = 5
 	execution_parallel_num: int = 8
+	execution_timeout: int = 10  # seconds
+	use_tqdm: bool = False
 
 
 def is_finished(vllm_output):
@@ -74,6 +79,7 @@ class GenerationInfoManager:
 		self.data[idx]['response'] += gen_text
 		self.data[idx]['response_token_ids'] += gen_token_ids
 		self.data[idx]['response_observation_mask'] += [1] * len(gen_token_ids)
+		self.truncate_response_by_id(idx)
 
 	def mark_finished(self, idx: int):
 		self.data[idx]['is_finished'] = True
@@ -98,6 +104,9 @@ class GenerationInfoManager:
 		self.data[idx]['response'] += tagged_execution_result
 		self.data[idx]['response_token_ids'] += token_ids
 		self.data[idx]['response_observation_mask'] += [0] * len(token_ids)
+		self.truncate_response_by_id(idx)
+
+	def truncate_response_by_id(self, idx: int):
 		if len(self.data[idx]['response_token_ids']) > self.max_tokens:
 			self.data[idx]['is_finished'] = True
 			self.data[idx]['response_token_ids'] = self.data[idx]['response_token_ids'][:self.max_tokens]
@@ -113,13 +122,18 @@ class GenerationInfoManager:
 	def get_active_data(self):
 		active_vllm_inputs = []
 		active_idxes = []
+		max_response_length = 0
 		for info in self.data:
 			if not info['is_finished']:
 				active_vllm_inputs.append({"prompt_token_ids": info['prompt_token_ids'] + info['response_token_ids']})
 				active_idxes.append(info['idx'])
-		return active_vllm_inputs, active_idxes
+				max_response_length = max(max_response_length, len(info['response_token_ids']))
+		return active_vllm_inputs, active_idxes, max_response_length
 
 	def to_vllm_request_outputs(self) -> List[RequestOutput]:
+		# prevent overlong responses
+		for idx in range(len(self.data)):
+			self.truncate_response_by_id(idx)
 		outs: List[RequestOutput] = []
 		for r in self.data:
 			prompt_text: str = r["prompt"]
@@ -168,7 +182,7 @@ class GenerationInfoManager:
 
 def code_integrated_generate(
 		vllm_inference_engine, prompts, sampling_params, cir_config: CodeIntegratedGenerationConfig, *, executor_manager=None,
-		lora_request=None, prompt_adapter_request=None, gided_options_request=None
+		use_tqdm: Optional[bool] = None, lora_request=None, prompt_adapter_request=None, gided_options_request=None
 	):
 	"""
 	agentic code-integrated generation
@@ -194,13 +208,25 @@ def code_integrated_generate(
 
 	# initialize generation info manager
 	generation_info_manager = GenerationInfoManager(prompts, tokenizer, cir_config, sampling_params_override.max_tokens)
+	total_prompt_count = len(prompts)
+	progress_bar = None
+	use_progress_bar = cir_config.use_tqdm if use_tqdm is None else use_tqdm
+	if use_progress_bar:
+		progress_bar = tqdm(total=total_prompt_count, desc="code integrated generation", unit="req", leave=False)
 
 	# main agentic generation loop
 	while True:
 
 		# check if there is active prompt needing generation
-		active_vllm_inputs, active_idxes = generation_info_manager.get_active_data()
-		if len(active_vllm_inputs) == 0:
+		active_vllm_inputs, active_idxes, max_response_length = generation_info_manager.get_active_data()
+		sampling_params_override.max_tokens -= max_response_length
+		if progress_bar is not None:
+			progress_bar.update(total_prompt_count - len(active_vllm_inputs) - progress_bar.n)
+			sleep(1)  # to make sure tqdm display is updated properly
+		if len(active_vllm_inputs) == 0 or sampling_params_override.max_tokens <= 0:
+			if progress_bar is not None:
+				progress_bar.update(total_prompt_count - progress_bar.n)
+				sleep(1)
 			break
 
 		# follow verl.workers.rollout.vllm_rollout.vlmm_rollout_spmd vLLMRollout.generate_sequences
@@ -269,6 +295,9 @@ def code_integrated_generate(
 	final_output_vllm_format = generation_info_manager.to_vllm_request_outputs()
 
 	response_observation_mask, code_triggered_counts, code_execution_counts, code_execution_error_counts = generation_info_manager.summaries()
+	if progress_bar is not None:
+		sleep(1)
+		progress_bar.close()
 	
 	try:
 		executor_manager.shutdown_executor(ids)

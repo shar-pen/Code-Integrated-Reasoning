@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
-set -xeuo pipefail
+# set -xeuo pipefail
 
-export PYTHONWARNINGS="ignore"
-export CUDA_VISIBLE_DEVICES='7'
-export WANDB_MODE=offline
-
-# pkill -u $(whoami) -f ipykernel_launcher
-
-PROJ_NAME=${PROJ_NAME:-"GRPO_math"}
+PROJ_NAME=${PROJ_NAME:-"GRPO_math_CIR"}
 EXP_NAME=${EXP_NAME:-"default"}
 
 NNODES=${NNODES:-1}
-NGPUS_PER_NODE=${NGPUS_PER_NODE:-1}
+NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 
 # Paths
-MODEL_PATH=${MODEL_PATH:-"/home/pengxia3/dc/models/Qwen2.5-1.5B-Instruct"}
-CKPTS_DIR="/home/pengxia3/dc/ckpts/${PROJ_NAME}/${EXP_NAME}"
+MODEL_PATH=${MODEL_PATH:-"~/dc/models/Qwen2.5-1.5B-Instruct"}
+CKPTS_ROOT_DIR=${CKPTS_ROOT_DIR:-"ckpts"}
+CKPTS_DIR=${CKPTS_ROOT_DIR}/${PROJ_NAME}/${EXP_NAME}
 
-FILE_DIR="/home/pengxia3/dc/data/code_integrated_reasoning"
+FILE_DIR="data/code_integrated_reasoning"
 TRAIN_FILE=${TRAIN_FILE:-"${FILE_DIR}/gsm8k/train.parquet"}
 TEST_FILE=${TEST_FILE:-"['${FILE_DIR}/gsm8k/test.parquet']"}
 
@@ -33,7 +28,7 @@ loss_agg_mode="token-mean"
 train_prompt_bsz=128
 train_prompt_mini_bsz=32
 n_resp_per_prompt=16
-n_resp_per_prompt_val=1
+n_resp_per_prompt_val=32
 
 max_prompt_length=$((1024 * 1))
 max_response_length=$((1024 * 4))
@@ -84,7 +79,10 @@ python3 -m verl.trainer.main_ppo \
 	\
 	actor_rollout_ref.rollout.code_integrated_generation.enable=True \
 	actor_rollout_ref.rollout.code_integrated_generation.max_execution_count=3 \
-	actor_rollout_ref.rollout.code_integrated_generation.execution_parallel_num=8 \
+	actor_rollout_ref.rollout.code_integrated_generation.max_try_execution_count=5 \
+	actor_rollout_ref.rollout.code_integrated_generation.execution_parallel_num=32 \
+	actor_rollout_ref.rollout.code_integrated_generation.execution_timeout=5 \
+	actor_rollout_ref.rollout.code_integrated_generation.use_tqdm=True \
 	\
 	actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
 	actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \

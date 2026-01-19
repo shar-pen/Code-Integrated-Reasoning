@@ -47,13 +47,21 @@ def main(input_data_path: str, output_data_path: str, max_num_response_per_quest
 		responses = row['responses']
 		code_triggered_counts = row['code_triggered_counts']
 		code_execution_counts = row['code_execution_counts']
+		code_execution_error_counts = row['code_execution_error_counts']
 
 		correctness_mask = (scores > 0.5)
 		has_execution_mask = (code_execution_counts > 0)
 		good_execution_format_mask_mask = (code_execution_counts == code_triggered_counts)
 		has_paired_tag_mask = np.array([has_paired_tag(resp, tags) for resp in responses], dtype=bool)
+		no_error_mask = (code_execution_error_counts == 0)
 
-		qualified_mask = correctness_mask & has_execution_mask & good_execution_format_mask_mask & has_paired_tag_mask
+		qualified_mask = (
+			correctness_mask \
+			& has_execution_mask \
+			& good_execution_format_mask_mask \
+			& has_paired_tag_mask \
+			& no_error_mask
+		)
 
 		if (qualified_mask).any():
 			responses = responses[qualified_mask]

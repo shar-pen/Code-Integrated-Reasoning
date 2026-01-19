@@ -243,6 +243,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
 
 	if "code_triggered_counts" in batch.non_tensor_batch:
 		code_triggered_counts = batch.non_tensor_batch["code_triggered_counts"]
+		code_execution_counts = batch.non_tensor_batch["code_execution_counts"]
 		metrics["code_integrated_generation/code_triggered_counts/min"] = code_triggered_counts.min()
 		metrics["code_integrated_generation/code_triggered_counts/max"] = code_triggered_counts.max()
 		metrics["code_integrated_generation/code_triggered_counts/mean"] = code_triggered_counts.mean()

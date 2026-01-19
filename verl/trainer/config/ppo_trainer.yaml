@@ -58,6 +58,8 @@ actor_rollout_ref:
       max_execution_count: 3
       max_try_execution_count: 5
       execution_parallel_num: 8
+      execution_timeout: 10  # seconds
+      use_tqdm: False # whether to use tqdm to show execution progress
 
 # custom reward function definition
 custom_reward_function:
