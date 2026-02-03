@@ -9,7 +9,8 @@ from datasets import load_dataset, Dataset, concatenate_datasets
 from cir_utils.python_interpreter import ExecutorManager, LocalPythonExecutor
 from cir_utils.generate_utils import CodeIntegratedGenerationConfig, code_integrated_generate
 from verl.utils.reward_score import default_compute_score
-
+from verl.trainer.ppo.reward import get_custom_reward_fn, load_reward_manager
+from omegaconf import DictConfig
 
 def main(
 		model_name_or_path: str, 
@@ -22,9 +23,26 @@ def main(
 		temperature: float = 1.0, 
 		max_tokens: int = 2048, 
 		top_p: float = 0.7, 
+		top_k: int = -1,
 		n_samples: int = 4,
 		tensor_parallel_size: int = 1,
+		custom_reward_function_path: str = None,
+		custom_reward_function_name: str = None,
 	):
+
+	if custom_reward_function_path is not None and custom_reward_function_name is not None:
+		config = DictConfig({
+			"custom_reward_function": {
+				"path": 'cir_utils/reward_score.py',
+				"name": 'compute_cir_score',
+			}
+		})
+		compute_score = get_custom_reward_fn(config)
+		if compute_score is None:
+			compute_score = default_compute_score
+	else:
+		compute_score = default_compute_score
+	print(compute_score)
 
 	# Load datasets
 	datasets = []
@@ -44,6 +62,7 @@ def main(
 		temperature=temperature,
 		max_tokens=max_tokens,
 		top_p=top_p,
+		top_k=top_k,
 	)
 	excutor_manager = ExecutorManager(max_workers=8, executor_cls=LocalPythonExecutor)
 	cir_config = CodeIntegratedGenerationConfig()
@@ -93,6 +112,7 @@ def main(
 			sampling_params=sampling_params,
 			cir_config=cir_config,
 			executor_manager=excutor_manager,
+			use_tqdm=True,
 		)
 		output_texts = [item.outputs[0].text for item in outputs]
 
@@ -114,9 +134,8 @@ def main(
 
 
 	def process_item(data_source, response_lst, reward_data):
-		reward_fn = default_compute_score
 		ground_truth = reward_data["ground_truth"]
-		score_lst = np.array([reward_fn(data_source, r, ground_truth) for r in response_lst])
+		score_lst = np.array([compute_score(data_source, r, ground_truth) for r in response_lst])
 		return  score_lst
 	
 	responses = dataset['responses']
@@ -132,6 +151,7 @@ def main(
 	output_dir = os.path.dirname(output_path)
 	os.makedirs(output_dir, exist_ok=True)
 	dataset.to_parquet(output_path)
+	print(f"Saved inference results to {output_path}")
 
 
 def parse_args():
@@ -146,8 +166,11 @@ def parse_args():
 	parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
 	parser.add_argument("--max-tokens", type=int, default=2048, help="Maximum new tokens")
 	parser.add_argument("--top-p", type=float, default=0.7, help="Top-p nucleus sampling")
+	parser.add_argument("--top-k", type=int, default=-1, help="Top-k sampling")
 	parser.add_argument("--n-samples", type=int, default=4, help="Number of samples per prompt")
 	parser.add_argument("--tensor-parallel-size", type=int, default=1, help="Tensor parallel world size")
+	parser.add_argument("--custom-reward-function-path", type=str, default=None, help="Path to custom reward function file")
+	parser.add_argument("--custom-reward-function-name", type=str, default=None, help="Name of the custom reward function")
 	return parser.parse_args()
 
 
@@ -164,6 +187,9 @@ if __name__ == "__main__":
 		temperature=args.temperature,
 		max_tokens=args.max_tokens,
 		top_p=args.top_p,
+		top_k=args.top_k,
 		n_samples=args.n_samples,
 		tensor_parallel_size=args.tensor_parallel_size,
+		custom_reward_function_path=args.custom_reward_function_path,
+		custom_reward_function_name=args.custom_reward_function_name,
 	)

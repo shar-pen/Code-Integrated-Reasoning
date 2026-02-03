@@ -71,7 +71,7 @@ from verl.workers.config import HFModelConfig, RolloutConfig
 from verl.workers.rollout.base import BaseRollout
 
 from cir_utils.python_interpreter import ExecutorManager
-from cir_utils.generate_utils import CodeIntegratedGenerationConfig, code_integrated_generate
+from cir_utils.generate_utils import CodeIntegratedGenerationConfig, code_integrated_generate, compute_ratio_safely
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -347,7 +347,7 @@ class vLLMRollout(BaseRollout):
 		# users can customize different sampling_params at different run
 		with self.update_sampling_params(**kwargs):
 			if self.code_integrated_generation.enable:
-				outputs, response_observation_mask, code_triggered_count, code_execution_count, code_execution_error_count = code_integrated_generate(
+				outputs, response_observation_mask, code_triggered_counts, code_execution_counts, code_execution_error_counts = code_integrated_generate(
 					vllm_inference_engine=self.inference_engine,
 					prompts=vllm_inputs,
 					sampling_params=self.sampling_params,
@@ -422,10 +422,15 @@ class vLLMRollout(BaseRollout):
 		)
 		if self.code_integrated_generation.enable:
 			batch.update({"response_mask": response_observation_mask})
+			code_triggered_counts = np.array(code_triggered_counts)
+			code_execution_counts = np.array(code_execution_counts)
+			code_execution_error_counts = np.array(code_execution_error_counts)
 			non_tensor_batch.update({
-				"code_triggered_counts": np.array(code_triggered_count), 
-				"code_execution_counts": np.array(code_execution_count),
-				"code_execution_error_counts": np.array(code_execution_error_count),
+				"code_integrated_generation/code_triggered_counts": code_triggered_counts, 
+				"code_integrated_generation/code_execution_counts": code_execution_counts,
+				"code_integrated_generation/code_execution_error_counts": code_execution_error_counts,
+				"code_integrated_generation/valid_formatted_code_ratio": compute_ratio_safely(code_execution_counts, code_triggered_counts),
+				"code_integrated_generation/execution_error_ratio": compute_ratio_safely(code_execution_error_counts, code_execution_counts),
 			})
 		if self.config.calculate_log_probs:
 			# we will recompute old log prob with actor

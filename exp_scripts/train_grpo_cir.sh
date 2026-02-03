@@ -28,7 +28,7 @@ loss_agg_mode="token-mean"
 train_prompt_bsz=128
 train_prompt_mini_bsz=32
 n_resp_per_prompt=16
-n_resp_per_prompt_val=32
+n_resp_per_prompt_val=8
 
 max_prompt_length=$((1024 * 1))
 max_response_length=$((1024 * 4))
@@ -84,6 +84,9 @@ python3 -m verl.trainer.main_ppo \
 	actor_rollout_ref.rollout.code_integrated_generation.execution_timeout=5 \
 	actor_rollout_ref.rollout.code_integrated_generation.use_tqdm=True \
 	\
+	custom_reward_function.path=cir_utils/reward_score.py \
+	custom_reward_function.name=compute_cir_score \
+	\
 	actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
 	actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
 	actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
@@ -135,8 +138,8 @@ python3 -m verl.trainer.main_ppo \
 	trainer.val_before_train=True \
 	trainer.test_freq=5 \
 	trainer.save_freq=10 \
-	trainer.total_epochs=10 \
-	trainer.total_training_steps=20 \
+	trainer.total_epochs=2 \
+	trainer.total_training_steps=50 \
 	trainer.default_local_dir="${CKPTS_DIR}" \
 	trainer.resume_mode=auto \
 	trainer.log_val_generations=10

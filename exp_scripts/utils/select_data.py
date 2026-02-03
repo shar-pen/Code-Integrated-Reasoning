@@ -25,12 +25,18 @@ def has_paired_tag(text: str, tags: list[tuple[str, str]]) -> bool:
             
     return len(stack) == 0
 
+def has_empty_execution_result(response):
+	execution_result_pattern = re.compile(r"<execution_result>(.*?)</execution_result>", re.DOTALL)
+	exec_ret_is_empty = [item.strip('\n') == '' for item in execution_result_pattern.findall(response)]
+	return any(exec_ret_is_empty)
+
 
 # input_data_path = 'data/infer/infer.parquet'
 # output_data_path = 'data/infer/distillation_data.parquet'
 
 def main(input_data_path: str, output_data_path: str, max_num_response_per_question: int | None = None):
 	tags = [["<python_interpreter>", "</python_interpreter>"], ["<execution_result>", "</execution_result>"]]
+	undesired_words = ['verify', 'confirm', 'check']
 	select_min_exec = True
 	max_responses = None if not max_num_response_per_question or max_num_response_per_question <= 0 else max_num_response_per_question
 	dataset = pd.read_parquet(input_data_path)
@@ -54,13 +60,18 @@ def main(input_data_path: str, output_data_path: str, max_num_response_per_quest
 		good_execution_format_mask_mask = (code_execution_counts == code_triggered_counts)
 		has_paired_tag_mask = np.array([has_paired_tag(resp, tags) for resp in responses], dtype=bool)
 		no_error_mask = (code_execution_error_counts == 0)
+		undesired_words_mask = np.array([not any(word in resp.lower() for word in undesired_words) for resp in responses], dtype=bool)
+		no_empty_execution_result_mask = np.array([not has_empty_execution_result(resp) for resp in responses], dtype=bool)
+		
 
 		qualified_mask = (
 			correctness_mask \
 			& has_execution_mask \
 			& good_execution_format_mask_mask \
 			& has_paired_tag_mask \
-			& no_error_mask
+			& no_error_mask \
+			& undesired_words_mask \
+			& no_empty_execution_result_mask
 		)
 
 		if (qualified_mask).any():

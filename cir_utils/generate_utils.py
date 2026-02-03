@@ -1,6 +1,7 @@
 import os
 import re
 import warnings
+import numpy as np
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
@@ -42,6 +43,25 @@ def extract_between_tags_regex(text: str, start_tag: str, end_tag: str) -> List[
 def format_execution_result(result: str, start_tag: str, end_tag: str) -> str:
 	return f'\n{start_tag}\n{result}\n{end_tag}\n'
 
+
+def compute_ratio_safely(num, den, *, dtype=np.float64):
+    """
+    Elementwise ratio with special rules:
+      - 0/0 -> 1
+      - x/0 -> 0  (x != 0)
+      - otherwise x/y
+    """
+    num = np.asarray(num)
+    den = np.asarray(den)
+
+    if num.shape != den.shape:
+        raise ValueError(f"Shape mismatch: {num.shape} vs {den.shape}")
+
+    ratio = np.empty_like(num, dtype=dtype)
+    ratio.fill(0)  # default for denom==0: x/0 -> 0
+    np.divide(num, den, out=ratio, where=(den != 0))
+    ratio[(den == 0) & (num == 0)] = 1
+    return ratio
 
 
 class GenerationInfoManager:

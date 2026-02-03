@@ -12,9 +12,16 @@ output_style_2_system_prompt = {
 }
 
 code_integrated_generation_prompt = (
-	"During your reasoning, if needed, you can choose to write python code between the tags <python_interpreter> and </python_interpreter> to help you with calculations or logic, such as <python_interpreter>\n# pure python code only (NO backticks, NO markdown, NO prose, NO extra tags)\n</python_interpreter>. "
-	"The code executor will run your code and return the output (stdout / plain text / error message) back to you between the tags <excution_result> and </excution_result>. "
-	"You will continue your reasoning after receiving the execution result."
+	# old prompt
+	# "During your reasoning, if needed, you can choose to write python code between the tags <python_interpreter> and </python_interpreter> to help you with calculations or logic, such as <python_interpreter>\n# pure python code only (NO backticks, NO markdown, NO prose, NO extra tags)\n</python_interpreter>. "
+	# "The code executor will run your code and return the output (stdout / plain text / error message) back to you between the tags <excution_result> and </excution_result>. "
+	# "You will continue your reasoning after receiving the execution result."
+	
+	# new prompt
+	"During your reasoning, you can use python code to perform logic and calculations. And you should always trust the execution result returned by the code executor. After receiving the execution result, you can choose to write more code if needed. Remeber you should prefer reasoning with code to reasoning directly. "
+	"If you decide to use python code, you must write python code between the tags <python_interpreter> and </python_interpreter>, such as <python_interpreter>\n# pure python code only (NO backticks, NO markdown, NO prose, NO extra tags)\n</python_interpreter>. "
+	"The code executor will run your code and return the output (stdout / plain text / error message) back to you between the tags <excution_result> and </excution_result> to support your reasoning process. You will continue your reasoning after receiving the execution result. "
+	"Remember that execution result is not formal enough as final answer and you need to follow the output format instructions to provide your final answer. "
 )
 
 format_kwargs = {}
@@ -52,3 +59,16 @@ def example_map_fn(example, idx, process_fn, data_source, ability, split, format
 		"extra_info": {"split": split, "index": idx, },
 	}
 	return data
+
+def remove_boxed(s):
+	if "\\boxed " in s:
+		left = "\\boxed "
+		assert s[: len(left)] == left
+		return s[len(left) :]
+
+	left = "\\boxed{"
+
+	assert s[: len(left)] == left
+	assert s[-1] == "}"
+
+	return s[len(left) : -1]

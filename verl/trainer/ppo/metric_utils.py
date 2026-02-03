@@ -26,25 +26,6 @@ from verl import DataProto
 from verl.utils.import_utils import deprecated
 
 
-def compute_ratio(num, den, *, dtype=np.float64):
-    """
-    Elementwise ratio with special rules:
-      - 0/0 -> 1
-      - x/0 -> 0  (x != 0)
-      - otherwise x/y
-    """
-    num = np.asarray(num)
-    den = np.asarray(den)
-
-    if num.shape != den.shape:
-        raise ValueError(f"Shape mismatch: {num.shape} vs {den.shape}")
-
-    ratio = np.empty_like(num, dtype=dtype)
-    ratio.fill(0)  # default for denom==0: x/0 -> 0
-    np.divide(num, den, out=ratio, where=(den != 0))
-    ratio[(den == 0) & (num == 0)] = 1
-    return ratio
-
 
 @deprecated("verl.utils.metric.reduce_metrics")
 def reduce_metrics(metrics: dict[str, list[Any]]) -> dict[str, Any]:
@@ -241,31 +222,19 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
 		metrics["tool_call_counts/max"] = tool_call_counts.max()
 		metrics["tool_call_counts/mean"] = tool_call_counts.mean()
 
-	if "code_triggered_counts" in batch.non_tensor_batch:
-		code_triggered_counts = batch.non_tensor_batch["code_triggered_counts"]
-		code_execution_counts = batch.non_tensor_batch["code_execution_counts"]
-		metrics["code_integrated_generation/code_triggered_counts/min"] = code_triggered_counts.min()
-		metrics["code_integrated_generation/code_triggered_counts/max"] = code_triggered_counts.max()
-		metrics["code_integrated_generation/code_triggered_counts/mean"] = code_triggered_counts.mean()
-		metrics["code_integrated_generation/code_triggered_counts/bool"] = (code_triggered_counts > 0).astype(float).mean()
-		metrics["code_integrated_generation/valid_code_ratio"] = compute_ratio(code_execution_counts, code_triggered_counts).mean()
+	for key, value in batch.non_tensor_batch.items():
+		# get the stats of individual scores
+		if key.startswith("sub_score/"):
+			# metric_name = key.removeprefix("subscore-")
+			score = value[non_aborted_mask]
+			metrics.update({f"critic/{key}/mean": score.mean()})
 
-	if "code_execution_counts" in batch.non_tensor_batch:
-		code_execution_counts = batch.non_tensor_batch["code_execution_counts"]
-		metrics["code_integrated_generation/code_execution_counts/min"] = code_execution_counts.min()
-		metrics["code_integrated_generation/code_execution_counts/max"] = code_execution_counts.max()
-		metrics["code_integrated_generation/code_execution_counts/mean"] = code_execution_counts.mean()
-		metrics["code_integrated_generation/code_execution_counts/bool"] = (code_execution_counts > 0).astype(float).mean()
-
-	
-	if "code_execution_error_counts" in batch.non_tensor_batch and "code_execution_counts" in batch.non_tensor_batch:
-		code_execution_counts = batch.non_tensor_batch["code_execution_counts"]
-		code_execution_error_counts = batch.non_tensor_batch["code_execution_error_counts"]
-		metrics["code_integrated_generation/code_execution_error_counts/min"] = code_execution_error_counts.min()
-		metrics["code_integrated_generation/code_execution_error_counts/max"] = code_execution_error_counts.max()
-		metrics["code_integrated_generation/code_execution_error_counts/mean"] = code_execution_error_counts.mean()
-		metrics["code_integrated_generation/code_execution_error_counts/bool"] = (code_execution_error_counts > 0).astype(float).mean()
-		metrics["code_integrated_generation/execution_error_ratio"] = compute_ratio(code_execution_error_counts, code_execution_counts).mean()
+		if key.startswith("code_integrated_generation/"):
+			score = value[non_aborted_mask]
+			metrics.update({
+				f"critic/{key}/mean": score.mean(),
+				f"critic/{key}/bool": (score > 0).astype(float).mean(),		
+			})
 		
 	return metrics
 

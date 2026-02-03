@@ -17,8 +17,8 @@ CKPTS_DIR=${CKPTS_ROOT_DIR}/${PROJ_NAME}/${EXP_NAME}
 TRAIN_FILE=${TRAIN_FILE:-"data/infer/distillation_data.parquet"}
 TEST_FILE=${TEST_FILE:-"data/infer/distillation_data.parquet"}
 
-max_length=1024
-train_batch_size=512
+max_length=2048
+train_batch_size=256
 micro_batch_size=1
 
 torchrun --nnodes=1 --nproc_per_node=${NGPUS_PER_NODE} \
@@ -39,7 +39,7 @@ torchrun --nnodes=1 --nproc_per_node=${NGPUS_PER_NODE} \
     trainer.experiment_name=${EXP_NAME} \
     trainer.logger='["console","wandb"]' \
 	trainer.total_epochs=1 \
-	trainer.save_freq=10 \
+	trainer.save_freq=5 \
     trainer.total_training_steps=10 \
 	\
 	# trainer.val_before_train=False \
