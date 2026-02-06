@@ -107,3 +107,15 @@ Here are some metric stats.
 ![Answer score](images/readme/eval_answer_score.png)
 ![Final score](images/readme/eval_final_score.png)
 
+# Reproduction procedure
+
+Follow these steps to reproduce the results:
+1. Install verl and other dependencies.
+2. Run code cells in `data_preprocess/run_build.ipynb` to build verl-style dataset for inference and RL training. 
+3. Download Qwen 2.5-Instruct models from official source and run `bash exp_scripts/run_infer.sh`, which produce raw inference data.
+4. Select code-integrated reasoning samples from raw data and produce SFT data. Run `bash exp_scripts/run_select_infer_data.sh`.
+5. Run SFT training: `bash exp_scripts/run_sft.sh`. Once SFT is done, you can run `bash exp_scripts/run_merge_fsdp.sh` to merge FSDP checkpoints into normal checkpoint for easier inference.
+6. Run RL training: `bash exp_scripts/run_rl.sh`. 
+
+Remember to modify variables in scripts according to your setting. 
+
