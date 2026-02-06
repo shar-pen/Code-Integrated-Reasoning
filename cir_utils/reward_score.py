@@ -5,7 +5,7 @@ import numpy as np
 from verl.utils.reward_score import default_compute_score
 
 
-def compute_has_tag_score(solution_str, **kwargs):
+def compute_tag_presence_score(solution_str, **kwargs):
 	"""
 	Compute the score based on the presence of specific tags in the solution string.
 	Return the averaged score over the tags existing in the solution.
@@ -20,7 +20,6 @@ def compute_has_tag_score(solution_str, **kwargs):
 	is_tag_in_solution = [item in solution_str for item in tags]
 	averaged_score = np.array(is_tag_in_solution, dtype=float).mean().item()
 	return averaged_score
-
 
 def compute_tag_format_score(solution_str, **kwargs):
 	"""
@@ -76,7 +75,7 @@ def compute_cir_score(
 	Compute the reward score for Code Integrated Reasoning tasks.
 	"""
 
-	tag_presence_score = compute_has_tag_score(solution_str)
+	tag_presence_score = compute_tag_presence_score(solution_str)
 	tag_format_score = compute_tag_format_score(solution_str)
 	normal_execution_result_score = compute_normal_execution_result_score(solution_str)
 	answer_score = default_compute_score(

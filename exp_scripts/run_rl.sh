@@ -15,4 +15,4 @@ export CKPTS_ROOT_DIR="/home/pengxia3/dc/ckpts"
 
 # bash exp_scripts/train_dapo.sh
 # bash exp_scripts/train_grpo.sh
-bash exp_scripts/train_grpo_cir.sh
+bash exp_scripts/base_scripts/train_grpo_cir.sh
