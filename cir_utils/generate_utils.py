@@ -354,7 +354,7 @@ if __name__ == "__main__":
 	)
 
 	system_prompt = """During your reasoning, if needed, you can choose to write python code between the tags <python_interpreter> and </python_interpreter> to help you with calculations or logic, such as <python_interpreter>\n# pure python code only (NO backticks, NO markdown, NO prose, NO extra tags)\n</python_interpreter>. 
-	The code executor will run your code and return the output (stdout / plain text / error message) back to you between the tags <excution_result> and </excution_result>.
+	The code executor will run your code and return the output (stdout / plain text / error message) back to you between the tags <execution_result> and </execution_result>.
 	You will continue your reasoning after receiving the execution result.
 	Please reason step by step, and put your final answer within \\boxed{}. 
 	"""
