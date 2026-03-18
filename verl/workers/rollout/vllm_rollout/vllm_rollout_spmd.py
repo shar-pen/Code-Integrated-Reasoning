@@ -235,7 +235,10 @@ class vLLMRollout(BaseRollout):
 		self.pad_token_id = tokenizer.pad_token_id
 
 		self.code_integrated_generation = CodeIntegratedGenerationConfig(**config.code_integrated_generation)
-		self.executor_manager = ExecutorManager(max_workers=self.code_integrated_generation.execution_parallel_num)
+		self.executor_manager = ExecutorManager(
+			max_workers=self.code_integrated_generation.execution_parallel_num,
+			default_timeout=self.code_integrated_generation.execution_timeout,
+		)
 
 	@contextmanager
 	def update_sampling_params(self, **kwargs):

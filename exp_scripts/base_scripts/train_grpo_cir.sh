@@ -28,7 +28,7 @@ loss_agg_mode="token-mean"
 train_prompt_bsz=128
 train_prompt_mini_bsz=32
 n_resp_per_prompt=16
-n_resp_per_prompt_val=8
+n_resp_per_prompt_val=1
 
 max_prompt_length=$((1024 * 1))
 max_response_length=$((1024 * 4))
@@ -110,7 +110,7 @@ python3 -m verl.trainer.main_ppo \
 	actor_rollout_ref.model.use_remove_padding=True \
 	\
 	actor_rollout_ref.rollout.name=vllm \
-	actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
+	actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
 	actor_rollout_ref.rollout.enable_chunked_prefill=True \
 	actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
 	actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \

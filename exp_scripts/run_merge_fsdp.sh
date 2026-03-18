@@ -2,5 +2,5 @@
 
 python3 -m scripts.legacy_model_merger merge \
 	--backend fsdp \
-	--local_dir /home/pengxia3/dc/ckpts/GRPO_math_CIR/Qwen2.5-3B-Instruct_SFT_step@10_3rd/global_step_50/actor \
-	--target_dir /home/pengxia3/dc/ckpts/GRPO_math_CIR/Qwen2.5-3B-Instruct_SFT_step@10_3rd/global_step_50_merged
+	--local_dir /home/pengxia3/dc/ckpts/GRPO_math_CIR/Qwen3-4B-Thinking-2507_SFT_0316_v2_step@40_v1/global_step_50/actor \
+	--target_dir /home/pengxia3/dc/ckpts/GRPO_math_CIR/Qwen3-4B-Thinking-2507_SFT_0316_v2_step@40_v1/global_step_50/actor_merged

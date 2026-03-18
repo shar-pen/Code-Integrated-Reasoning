@@ -271,7 +271,7 @@ class MultiTurnSFTDataset(Dataset):
 		# First, get the full conversation tokens
 		try:
 			if self.code_integrated_generation_config.enable:
-				full_message_text= self.tokenizer.apply_chat_template(
+				full_message_text= tokenizer.apply_chat_template(
 					messages,
 					tools=tools,
 					tokenize=False,

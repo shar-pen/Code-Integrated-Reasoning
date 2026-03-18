@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections import defaultdict
+import concurrent.futures
 from typing import Any
 
 import torch
@@ -60,6 +61,7 @@ class NaiveRewardManager(AbstractRewardManager):
 
 		already_print_data_sources = {}
 
+		inputs_list = []
 		for i in range(len(data)):
 			data_item = data[i]  # DataProtoItem
 
@@ -86,12 +88,35 @@ class NaiveRewardManager(AbstractRewardManager):
 			extra_info["num_turns"] = num_turns
 			extra_info["rollout_reward_scores"] = rollout_reward_scores
 
+			inputs_list.append({
+				"i": i,
+				"prompt_str": prompt_str,
+				"response_str": response_str,
+				"ground_truth": ground_truth,
+				"data_source": data_source,
+				"extra_info": extra_info,
+				"valid_response_length": valid_response_length
+			})
+
+		def _compute_score_wrapper(inputs):
 			score = self.compute_score(
-				data_source=data_source,
-				solution_str=response_str,
-				ground_truth=ground_truth,
-				extra_info=extra_info,
+				data_source=inputs["data_source"],
+				solution_str=inputs["response_str"],
+				ground_truth=inputs["ground_truth"],
+				extra_info=inputs["extra_info"],
 			)
+			return inputs, score
+
+		with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(inputs_list), 128)) as executor:
+			results = list(executor.map(_compute_score_wrapper, inputs_list))
+
+		for inputs, score in results:
+			i = inputs["i"]
+			valid_response_length = inputs["valid_response_length"]
+			data_source = inputs["data_source"]
+			prompt_str = inputs["prompt_str"]
+			response_str = inputs["response_str"]
+			ground_truth = inputs["ground_truth"]
 
 			if isinstance(score, dict):
 				reward = score["score"]

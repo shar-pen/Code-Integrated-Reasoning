@@ -131,6 +131,7 @@ class GenerationInfoManager:
 			self.data[idx]['is_finished'] = True
 			self.data[idx]['response_token_ids'] = self.data[idx]['response_token_ids'][:self.max_tokens]
 			self.data[idx]['response_observation_mask'] = self.data[idx]['response_observation_mask'][:self.max_tokens]
+			self.data[idx]['response'] = self.tokenizer.decode(self.data[idx]['response_token_ids'])
 
 	def update_execution_counters(self, idx: int, *, increment_exec_count: bool = False, increment_exec_error: bool = False):
 		"""Update bookkeeping counters after an execution result."""
@@ -278,14 +279,19 @@ def code_integrated_generate(
 				if len(codeblocks) > 0:
 					# noramlly we only get one special code block per generation round
 					code = codeblocks[0]
-					if generation_info_manager.get_execution_count(idx) < max_execution_count:
-						# waiting for batch execution
-						exec_requests.append({'id': idx, 'code': code})
-					else:
-						# max execution count reached, appending plain text result
-						execution_return = "Max execution count reached"
+					if 'plt' in code:
+						execution_return = "Error: Plot-related code detected, skipping execution."
 						generation_info_manager.append_execution(idx, execution_return)
 						generation_info_manager.update_execution_counters(idx, increment_exec_count=False, increment_exec_error=False)
+					else:
+						if generation_info_manager.get_execution_count(idx) < max_execution_count:
+							# waiting for batch execution
+							exec_requests.append({'id': idx, 'code': code})
+						else:
+							# max execution count reached, appending plain text result
+							execution_return = "Max execution count reached"
+							generation_info_manager.append_execution(idx, execution_return)
+							generation_info_manager.update_execution_counters(idx, increment_exec_count=False, increment_exec_error=False)
 				else:
 					# abnormal case: no code block found
 					execution_return = "Error: No valid code found for execution."

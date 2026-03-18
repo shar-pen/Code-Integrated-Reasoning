@@ -24,16 +24,18 @@ code_integrated_generation_prompt = (
 	"Remember that execution result is not formal enough as final answer and you need to follow the output format instructions to provide your final answer. "
 )
 
-format_kwargs = {}
 
-def format_prompt(problem: str, **format_kwargs):
+def format_prompt(problem: str, **format_prompt_kwargs):
 	
 	system_prompt = []
-	output_style = format_kwargs.get('output_style', 'math_reward_style')
-	enable_code_integrated_generation = format_kwargs.get('enable_code_integrated_generation', False)
-	# code integrated generation prompt
-	if enable_code_integrated_generation:
-		system_prompt.append(code_integrated_generation_prompt)
+	output_style = format_prompt_kwargs.get('output_style', 'math_reward_style')
+	system_instruction = format_prompt_kwargs.get('system_instruction', False)
+	if system_instruction:
+		system_prompt.append(system_instruction)
+	# enable_code_integrated_generation = format_kwargs.get('enable_code_integrated_generation', False)
+	# # code integrated generation prompt
+	# if enable_code_integrated_generation:
+	# 	system_prompt.append(code_integrated_generation_prompt)
 	# output style prompt
 	if output_style in output_style_2_system_prompt:
 		output_style_prompt = output_style_2_system_prompt[output_style]

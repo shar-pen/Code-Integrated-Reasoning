@@ -414,21 +414,22 @@ class ExecutorManager:
 
 		return results
 
+
 if __name__ == "__main__":
 
 	executor = LocalPythonExecutor()
 
 	code = "def add(a,b):\n    return a + b\nadd(1)"
 	r = executor.execute(code)
-	print(r)
+	print(default_format_execution_return(r))
 
 	code = "add(1,2)"
 	r = executor.execute(code)
-	print(r)
+	print(default_format_execution_return(r))
 	
 	code = "import time\ntime.sleep(2)\nadd(3,4)"
 	r = executor.execute(code, 1)
-	print(r)
+	print(default_format_execution_return(r))
 
 	del executor
 

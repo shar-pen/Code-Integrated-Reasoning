@@ -38,9 +38,9 @@ torchrun --nnodes=1 --nproc_per_node=${NGPUS_PER_NODE} \
     trainer.project_name=${PROJ_NAME} \
     trainer.experiment_name=${EXP_NAME} \
     trainer.logger='["console","wandb"]' \
-	trainer.total_epochs=1 \
-	trainer.save_freq=5 \
-    trainer.total_training_steps=10 \
+	trainer.total_epochs=5 \
+	trainer.save_freq=10 \
+    trainer.total_training_steps=50 \
 	\
 	# trainer.val_before_train=False \
 	# trainer.test_freq=5 \
